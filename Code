@@ -1,0 +1,58 @@
+// 1. Ver el poligono de AOI
+
+Map.centerObject(AOI, 10);
+Map.addLayer(AOI, {color: 'green'},'AOI');
+
+// ----------------------------------------------------------------//
+// _______________________Periodo 2001 - 2005 ____________________//
+
+// 2.Seleccionar imagenes landsat mision 5 y 7
+var landsat5 = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+       .filterBounds(AOI)
+       .filterDate('2000-12-01','2005-04-30')
+       .filter(ee.Filter.lt('CLOUD_COVER',50));
+
+var landsat7 = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2')
+       .filterBounds(AOI)
+       .filterDate('2000-12-01','2005-04-30')
+       .filter(ee.Filter.lt('CLOUD_COVER',50));
+       
+// 3.Unir las colecciones
+var Colec2005=landsat5.merge(landsat7);
+
+// 4. Mascara de nubes usando Banda QA_Pixel y aplicar escala
+function procesamientoImagen(image){
+  var qa = image.select('QA_PIXEL');
+  
+  var mask = qa.bitwiseAnd(1 << 3).eq(0) // valores para nubes
+               .and(qa.bitwiseAnd(1 << 4).eq(0));// valores para sombra
+               
+  var imagenMask = image.updateMask(mask);
+  
+  var bandasOpticas = imagenMask.select('SR_B.').multiply(0.0000275).add(-0.2);
+  var bandaTermica = imagenMask.select('ST_B6').multiply(0.00341802).add(149.0);
+  
+  return image.addBands(bandasOpticas, null, true)
+              .addBands(bandaTermica, null, true)
+              .updateMask(mask)
+              .copyProperties(image, image.propertyNames());
+}
+
+// 5. Aplicar la funcion a la coleccion
+
+var Colec2005Procesada = Colec2005.map(procesamientoImagen);
+
+// 6. Crear mosaico mediano
+var mosaico2005 = Colec2005Procesada.median()
+  .clip(AOI);
+
+// 7. Visualizo en pantalla
+var RGB2005 = {
+  bands: ['SR_B3', 'SR_B2', 'SR_B1'],
+  min: 0.0,
+  max: 0.3,
+};
+
+print ('Numero total de imagenes seleccionadas:', Colec2005.size());
+
+Map.addLayer(mosaico2005, RGB2005, 'True Color (321)');
